@@ -35,7 +35,7 @@ class GAN():
         d4 = conv2d(d3, self.IE_filters * 8)
         flatten=Flatten()
         d4=flatten(d4)
-        print(d4.shape)
+       
         return d4#Model(d0,d4)
     def I_Decoder(self,x=0):
         def deconv2d(layer_input,  filters, f_size=4, dropout_rate=0):
@@ -59,6 +59,11 @@ class GAN():
         return output_img#Model(x, output_img)
 
     def T_Encoder(self,x=0):
+        '''
+
+        :param x:文本
+        :return: 编码后的文本，lstm后的文本与后面做loss使用
+        '''
         embedding = Embedding(input_dim=self.max_features, output_dim=self.embedding_dims, input_length=self.maxlen)
         LSTM1 = LSTM(256, return_sequences=True, input_shape=(50, 300))
         drop1 = Dropout(0.5)
@@ -67,17 +72,18 @@ class GAN():
         dense=Dense(64,activation='relu')
 
         x=embedding(x)
-        print(x.shape)
-        x=LSTM1(x)
-        print(x.shape)
+
+        out1=x=LSTM1(x)
+
         x=drop1(x)
-        print(x.shape)
+
         x=flatten(x)
-        print(x.shape)
+
         x=dense(x)
-        print(x.shape)
-        return x
-    #def T_Deconder(self,x):
+
+        return x,out1
+
+
 
     def C_Deconder(self,h_img,h_text,c_dim):
         '''
@@ -88,8 +94,9 @@ class GAN():
         :return: 解码的总向量，图像向量，文本向量
         '''
         flatten=Flatten()
-        i_shape=h_img.shaep
+        i_shape=h_img.shape
         h_img=flatten(h_img)
+        print(h_img.shape)
         I_inputdim=h_img.shape[1].value
         T_inputdim=h_text.shape[1].value
         h=tf.concat([h_img,h_text],0)
@@ -103,20 +110,118 @@ class GAN():
         return h,I_out,T_out
 
     def T_Deconder(self,x):
-        LSTM2=LSTM(256, return_sequences=True, input_shape=(50, 300))
-'''
+        dense0=Dense(256*300)#256是编码器中的lstm维数，300是maxlen
+
+        LSTM2=LSTM(256, return_sequences=True)
+        x=dense0(x)
+        print(x.shape)
+        x=tf.reshape(x,[-1,300,256])
+        x=LSTM2(x)
+        print("t:", x.shape)
+        return x
+
+
+class Self_Conv2d(layers.Layer):#自定义conv2d
+    def __init__(self,filters,f_size=4):
+        super().__init__()
+        self.conv2d=Conv2D(filters,kernel_size=f_size,strides=2,padding='same',
+                             acitvation='relu')
+        self.act=LeakyReLU(alpha=0.2)
+    def call(self,input):
+        d=self.conv2d(input)
+        d=self.act(d)
+        return d
+class Self_Deconv2d(layers.Layer):
+    def __init__(self,filters,f_size=4,dropout_rate=0):
+        super().__init__()
+        self.upsampling2d=UpSampling2D(size=2)
+        self.conv2d=Conv2D(filters,kernel_size=f_size, strides=1, padding='same', activation='relu')
+        self.dropout_rate=dropout_rate
+        self.dropout=Dropout(dropout_rate)
+    def call(self,input):
+        u=self.upsampling2d(input)
+        u=self.conv2d(u)
+        if self.dropout_rate:
+            u=self.dropout(u)
+        return u
 class I_Enconder(layers.Layer):
     def __init__(self,f_sizes=4):
-        super().__init__()
+        super().__init__(name='I_enconder')
         self.f_sizes=f_sizes
-        def conv2d(layer_input, filters, f_size=self.f_sizes):
-            """Layers used during downsampling"""
-            d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
-            d = LeakyReLU(alpha=0.2)(d)
-            #d = InstanceNormalization()(d)#对单个对象进行正则化
-            return d
-        self.
-'''
+        self.IE_filters=32
+        self.img_rows = 128
+        self.img_cols = 128
+        self.channels = 3
+        self.img_shapes = (self.img_rows, self.img_cols, self.channels)
+        self.flatten=Flatten()
+        self.conv2d_0=Self_Conv2d(self.IE_filters)      #Conv2D(filters=self.IE_filters,kernel_size=f_sizes,strides=2,padding='same',
+                       #      acitvation='relu')
+        self.conv2d_1=Self_Conv2d(self.IE_filters*2)#Conv2D(filters=self.IE_filters*2,kernel_size=f_sizes,strides=2,padding='same',
+                       #      acitvation='relu')
+        self.conv2d_2 = Self_Conv2d(self.IE_filters*4)#Conv2D(filters=self.IE_filters * 4, kernel_size=f_sizes, strides=2, padding='same',
+                             #  acitvation='relu')
+        self.conv2d_3 = Self_Conv2d(self.IE_filters*8)#Conv2D(filters=self.IE_filters * 8, kernel_size=f_sizes, strides=2, padding='same',
+                               #acitvation='relu')
+    def call(self,input):
+        d0 = Input(shape=self.img_shapes)
+        d1 = self.conv2d_0(d0)
+        d2 = self.conv2d_1(d1)
+        d3 = self.conv2d_2(d2)
+        d4 = self.conv2d_3(d3)
+        d4=self.flatten(d4)
+        return d4
+class I_Deconder(layers.Layer):
+    def __init__(self):
+        super().__init__(name='I_deconder')
+        self.channels=3
+        self.IE_filters = 32
+        self.flatten = Flatten()
+        self.deconv2d_0 = Self_Deconv2d(self.IE_filters*4)#Conv2D(filters=self.IE_filters, kernel_size=f_sizes, strides=2, padding='same',
+                              # acitvation='relu')
+        self.deconv2d_1 =Self_Deconv2d(self.IE_filters*2)# Conv2D(filters=self.IE_filters * 2, kernel_size=f_sizes, strides=2, padding='same',
+                              # acitvation='relu')
+        self.deconv2d_2 =Self_Deconv2d(self.IE_filters) #Conv2D(filters=self.IE_filters * 4, kernel_size=f_sizes, strides=2, padding='same',
+                              # acitvation='relu')
+        self.upsampling2d=UpSampling2D(size=2)  #Conv2D(filters=self.IE_filters * 8, kernel_size=f_sizes, strides=2, padding='same',
+                              # acitvation='relu')
+        self.outputConv2d=Conv2D(self.channels, kernel_size=4,
+                                 strides=1, padding='same', activation='tanh')
+    def call(self,input):
+        u1=self.deconv2d_0(input)
+        u2=self.deconv2d_1(u1)
+        u3=self.deconv2d_2(u2)
+        u4=self.upsampling2d(u3)
+        output_img=self.outputConv2d(u4)
+        return output_img
+class T_Enconder(layers.Layer):
+    def __init__(self):
+        super().__init__(name='T_enconder')
+        self.embedding = Embedding(input_dim=self.max_features,
+                              output_dim=self.embedding_dims,
+                              input_length=self.maxlen)
+        self.LSTM1 = LSTM(256, return_sequences=True, input_shape=(50, 300))
+        self.drop1 = Dropout(0.5)
+
+        self.flatten = Flatten()
+        self.dense = Dense(64, activation='relu')
+    def call(self,input):
+        x=self.embedding(input)
+        out1=x=self.LSTM1(x)
+        x=self.drop1(x)
+        x=self.flatten(x)
+        x=self.dense(x)
+        return x,out1
+class T_Deconder(layers.Layer):
+    def __init__(self):
+        super().__init__()
+        self.dense0 = Dense(256 * 300)  # 256是编码器中的lstm维数，300是maxlen
+
+        self.LSTM2 = LSTM(256, return_sequences=True)
+    def call(self,input):
+        x=self.dense0(input)
+        x=tf.reshape(x,[-1,300,256])
+        x=self.LSTM2(x)
+        return x
 
 
 
@@ -125,12 +230,17 @@ class I_Enconder(layers.Layer):
 
 
 
+
+
+#input=tf.random.normal([30,500], mean=0.0, stddev=1.0)
 g=GAN()
 img=plt.imread("img.png").astype(np.float)
-m=g.I_Encoder(img)
+img=g.I_Encoder(img)
 #y=g.I_Decoder(m)
-x=tf.random.uniform([50,300])
-a=g.T_Encoder(x)
+input=tf.random.uniform([50,300],minval=1,maxval=2)
+txt,out1=g.T_Encoder(input)
+p=g.C_Deconder(img,txt,32)
+k=g.T_Deconder(txt)
 
 
 
