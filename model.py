@@ -223,6 +223,41 @@ class T_Deconder(layers.Layer):
         x=self.LSTM2(x)
         return x
 
+class GanModel(tf.keras.Model):
+    def __init__(self):
+        super().__init__()
+        self.img_rows = 128
+        self.img_cols = 128
+        self.channels = 3
+        self.img_shape = (self.img_rows, self.img_cols, self.channels)
+    def call(self,input):
+
+        return
+    def build_generator(self):
+        x=I_Enconder(input)
+        x=I_Deconder(x)
+        return Model(input=input,output=x)
+    def build_discriminator(self):
+        def d_layer(layer_input, filters, f_size=4, normalization=True):
+            """Discriminator layer"""
+            d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
+            d = LeakyReLU(alpha=0.2)(d)
+            #if normalization:
+             #   d = InstanceNormalization()(d)
+            #return d
+
+        img = Input(shape=self.img_shape)
+
+        d1 = d_layer(img, self.df, normalization=False)
+        d2 = d_layer(d1, self.df*2)
+        d3 = d_layer(d2, self.df*4)
+        d4 = d_layer(d3, self.df*8)
+
+        validity = Conv2D(1, kernel_size=4, strides=1, padding='same')(d4)
+
+        return Model(img, validity)
+
+
 
 
 
